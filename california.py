@@ -1,3 +1,4 @@
+import requests
 from pyvirtualdisplay import Display
 from datetime import datetime
 from selenium import webdriver
@@ -9,20 +10,28 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 from selenium.webdriver.chrome.options import Options
 
+# Email Information
+MESSAGES_URL = ''
+API_KEY = ''
+FROM_EMAIL = ''
+TO_EMAIL = ''
+
 SHORT_TIMEOUT = 5 
 LONG_TIMEOUT = 15
-
 LOADER_ID = 'divUnitloader_box'
-
 URL = 'https://www.reservecalifornia.com/CaliforniaWebHome/Facilities/AdvanceSearch.aspx'
 
-display = Display(visible=0, size=('1366', '768'))
-display.start()
 
-driver = webdriver.Firefox(executable_path = '/usr/local/bin/geckodriver')
-print "driver created"
-driver.get(URL)
-print "url got"
+def send_email(body):
+    """Send an email."""
+    return requests.post(
+        MESSAGES_URL,
+        auth=('api', API_KEY),
+        data={'from': FROM_EMAIL,
+              'to': [TO_EMAIL],
+              'subject': 'Campground matches found',
+              'text': body}) 
+
 
 def WaitForLoader(driver):
   try:
@@ -50,7 +59,6 @@ def CheckForDates(driver, target_dates):
   tds = table.find_elements_by_tag_name('td')
   for td in tds:
     td_title = td.get_attribute('title')
-    print td_title
     for date in target_dates:
       date_str = date.strftime('%m/%d/%Y')
       date_parts = date_str.split('/')
@@ -68,6 +76,14 @@ def CheckForDates(driver, target_dates):
         print "match!"
   return matches
 
+
+display = Display(visible=0, size=('1366', '768'))
+display.start()
+
+driver = webdriver.Firefox(executable_path = '/usr/local/bin/geckodriver')
+print "driver created"
+driver.get(URL)
+print "url got"
 
 # Home Page  
 WaitForLoader(driver)
@@ -96,24 +112,43 @@ except TimeoutException:
 
 div_elem = driver.find_element_by_id('divPark614')
 
-driver.save_screenshot('screenie.png')
-print "screen shot taken"
+btn_success_class = 'btn btn-success'
+btn_danger_class = 'btn btn-danger'
+btn_elems = div_elem.find_elements_by_tag_name('a')
+btn_elem = None
+for btn in btn_elems:
+  btn_class = btn.get_attribute('class')
+  if btn_class == btn_success_class: 
+    btn_elem = btn 
+    break
 
-btn_elem = div_elem.find_element_by_tag_name('a')
 btn_elem.click()
 
 # Facility Page
+print 'Facility Page'
+btn_elem = None
 facilities_to_check = ['East Bay (sites 1-3)', 'Ridge (sites 4-6)']
 facilities = driver.find_elements_by_class_name('facilility_sub_box')
 for facility in facilities:
   facility_name_elem = facility.find_element_by_class_name('main_tit_sub_facility')
   if facility_name_elem.text == 'East Bay (sites 1-3)':
-    btn_elem = facility.find_element_by_class_name('btn-success')
-    btn_elem.click()
+    btn_elems = facility.find_elements_by_tag_name('a')
+    for btn in btn_elems:
+      btn_class = btn.get_attribute('class')
+      if btn_class == btn_success_class: 
+        btn_elem = btn 
+        break
+      if btn_class == btn_danger_class: 
+        btn_elem = btn 
+        break
     break
 
+btn_elem.click()
+
 # Reservation Page
+print 'Reservation Page'
 target_dates = [
+  datetime(2017, 9, 19),
   datetime(2017, 9, 23),
   datetime(2017, 9, 30),
   datetime(2017, 10, 7),
@@ -121,15 +156,24 @@ target_dates = [
 ]
 
 count = 0
-while count < 9:
+found_matches = []
+while count < 10:
+  month_box = driver.find_element_by_class_name('month_name_box')
+  #driver.save_screenshot('screenie_' + str(count) + '.png')
+  #print "screen shot taken"
+  print month_box.text
   matches = CheckForDates(driver, target_dates)
-  print "we have matches! %s" % matches
+  if matches:
+    print "we have matches! %s" % matches
+    found_matches.extend(matches)
   next_days_id = 'NextDays'
   nextDays = driver.find_element_by_id(next_days_id)
   nextDays.click()
   print "getting next days"
   WaitForLoader(driver)
   count += 1
+
+if found_matches:
 
 # quit browser
 driver.quit()
